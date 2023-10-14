@@ -172,12 +172,10 @@ void *handle_message(void *arg) {
     } else if (received > 0) {
         find_method_and_subdir(buffer, &method, &subdir);
 
-        if (method != NULL && subdir != NULL) {
-            if (strcmp(method, "GET") != 0) {
-                send_failure_message(client_fd);
-            } else {
-                send_resource(client_fd, subdir);
-            }
+        if (method != NULL && subdir != NULL && strcmp(method, "GET") == 0) {
+            send_resource(client_fd, subdir);
+        } else {
+            send_failure_message(client_fd);
         }
 
         free(subdir);
