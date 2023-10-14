@@ -140,7 +140,7 @@ void send_resource(int client_fd, char* resource) {
 void find_method_and_subdir(char* src, char **method, char **subdir) {
     size_t buffer_len = strlen(src);
     for (size_t i = 0; i < buffer_len; ++i) {
-        if (src[i] == ' ') {
+        if (src[i] == ' ' || src[i] == '?') {
             if (*method == NULL) {
                 src[i] = '\0';
                 *method = (char *)malloc(i + 1);
@@ -165,6 +165,12 @@ void *handle_message(void *arg) {
     char *subdir = NULL;
 
     size_t received = recv(client_fd, buffer, 8192, MSG_NOSIGNAL);
+
+    FILE *file1 = fopen("/tmp/log", "w");
+
+    fwrite((void*)buffer, 1, received, file1);
+
+    fclose(file1);
 
     if ((received == 0 || received == -1) && errno != EAGAIN) {
         shutdown(client_fd, SHUT_RDWR);
