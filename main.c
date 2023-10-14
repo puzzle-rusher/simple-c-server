@@ -137,25 +137,55 @@ void send_resource(int client_fd, char* resource) {
     free(response);
 }
 
+void find_method_and_subdir(char* src, char **method, char **subdir) {
+    size_t buffer_len = strlen(src);
+    for (size_t i = 0; i < buffer_len; ++i) {
+        if (src[i] == ' ') {
+            if (*method == NULL) {
+                src[i] = '\0';
+                *method = (char *)malloc(i + 1);
+                strcpy(*method, src);
+            } else if (*subdir == NULL) {
+                src[i] = '\0';
+                size_t method_size = strlen(*method) + 1;
+
+                *subdir = (char *)malloc(i + 1 - method_size);
+                strcpy(*subdir, (src + method_size));
+
+                break;
+            }
+        }
+    }
+}
+
 void *handle_message(void *arg) {
     int client_fd = *(int *)arg;
     char buffer[8192];
-    size_t received = recv(client_fd, buffer, 1024, MSG_NOSIGNAL);
+    size_t received = recv(client_fd, buffer, 8192, MSG_NOSIGNAL);
 
     if ((received == 0 || received == -1) && errno != EAGAIN) {
         shutdown(client_fd, SHUT_RDWR);
         close(client_fd);
     } else if (received > 0) {
-        char *saveptr;
-        char *token = strtok_r(buffer, " ", &saveptr);
+        char *method = NULL;
+        char *subdir = NULL;
 
-        if (strcmp(token, "GET") != 0) {
-            send_failure_message(client_fd);
-        } else {
-            token = strtok_r(NULL, " ", &saveptr);
-            send_resource(client_fd, token);
+        find_method_and_subdir(buffer, &method, &subdir);
+
+        if (method == NULL || subdir == NULL) {
+            shutdown(client_fd, SHUT_RDWR);
+            close(client_fd);
+            return NULL;
         }
 
+        if (strcmp(method, "GET") != 0) {
+            send_failure_message(client_fd);
+        } else {
+            send_resource(client_fd, subdir);
+        }
+
+        free(subdir);
+        free(method);
         shutdown(client_fd, SHUT_RDWR);
         close(client_fd);
     }
