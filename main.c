@@ -161,27 +161,23 @@ void find_method_and_subdir(char* src, char **method, char **subdir) {
 void *handle_message(void *arg) {
     int client_fd = *(int *)arg;
     char buffer[8192];
+    char *method = NULL;
+    char *subdir = NULL;
+
     size_t received = recv(client_fd, buffer, 8192, MSG_NOSIGNAL);
 
     if ((received == 0 || received == -1) && errno != EAGAIN) {
         shutdown(client_fd, SHUT_RDWR);
         close(client_fd);
     } else if (received > 0) {
-        char *method = NULL;
-        char *subdir = NULL;
-
         find_method_and_subdir(buffer, &method, &subdir);
 
-        if (method == NULL || subdir == NULL) {
-            shutdown(client_fd, SHUT_RDWR);
-            close(client_fd);
-            return NULL;
-        }
-
-        if (strcmp(method, "GET") != 0) {
-            send_failure_message(client_fd);
-        } else {
-            send_resource(client_fd, subdir);
+        if (method != NULL && subdir != NULL) {
+            if (strcmp(method, "GET") != 0) {
+                send_failure_message(client_fd);
+            } else {
+                send_resource(client_fd, subdir);
+            }
         }
 
         free(subdir);
@@ -191,9 +187,8 @@ void *handle_message(void *arg) {
     }
 }
 
-int main(int argc, char *argv[])
+int true_main(struct Args args)
 {
-    struct Args args = parse_args(argc, argv);
     dir = args.directory;
     int master_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     bind_socket(master_socket_fd, args.ip_address, args.port);
@@ -225,6 +220,8 @@ int main(int argc, char *argv[])
         nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
         if (nfds == -1) {
             perror("epoll_wait");
+            shutdown(master_socket_fd, SHUT_RDWR);
+            close(master_socket_fd);
             exit(EXIT_FAILURE);
         }
 
@@ -245,4 +242,36 @@ int main(int argc, char *argv[])
     shutdown(master_socket_fd, SHUT_RDWR);
     close(master_socket_fd);
     return 0;
+}
+
+int main(int argc, char *argv[]) {
+    // Создаем дочерний процесс
+    pid_t pid = fork();
+
+    // Проверка на ошибку fork
+    if (pid < 0) {
+        perror("Ошибка при вызове fork");
+        exit(1);
+    }
+
+    // Если это дочерний процесс
+    if (pid == 0) {
+        // Создаем новую сессию
+        setsid();
+
+        // Изменяем текущий каталог
+        chdir("/");
+
+        // Открываем /dev/null и перенаправляем stdin, stdout и stderr на него
+        open("/dev/null", O_RDWR); // stdin
+        dup(0);                    // stdout
+        dup(0);                    // stderr
+
+        // Здесь можно выполнять код демона
+        struct Args args = parse_args(argc, argv);
+        true_main(args);
+    } else {
+        // Родительский процесс завершает выполнение
+        exit(0);
+    }
 }
